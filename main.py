@@ -28,16 +28,69 @@ ENTRY = (
 )
 
 
-def main() -> None:
-    import os
-
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
+def entry_text() -> str:
+    """Return the entry text, validated against the competition gate."""
     text = ENTRY.strip()
     assert 1 <= len(text) <= 200, "entry must be 1 to 200 characters"
     assert "\n" not in text, "entry must be a single line"
-    with open(os.path.join(out_dir, "entry.txt"), "w", encoding="utf-8") as f:
+    assert text.strip(), "entry must not be only whitespace"
+    return text
+
+
+def output_path() -> str:
+    """Resolve the entry file path, honouring an output-dir override."""
+    import os
+
+    out_dir = (
+        os.environ.get("MAKEFUN_OUTPUT_DIR")
+        or os.environ.get("OUTPUT_DIR")
+        or "/output"
+    )
+    return os.path.join(out_dir, "entry.txt")
+
+
+def write_entry(path: str, text: str) -> None:
+    """Write the entry text to the given path, creating its directory."""
+    import os
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         f.write(text + "\n")
+
+
+def self_check(path: str) -> None:
+    """Re-read the written file and validate it against the gate."""
+    with open(path, encoding="utf-8") as f:
+        written = f.read()
+    body = written.rstrip("\n")
+    assert 1 <= len(body) <= 200, "entry must be 1 to 200 characters"
+    assert "\n" not in body, "entry must be a single line"
+    assert body.strip(), "entry must not be only whitespace"
+
+
+def verify_written_bytes(path: str, expected_text: str) -> None:
+    """Fail loudly if the bytes on disk differ from the expected entry.
+
+    The gate re-read above checks shape; this checks content byte for
+    byte, so a truncated write, a wrong encoding, or a stray edit to
+    the entry text can never slip through silently.
+    """
+    expected = (expected_text + "\n").encode("utf-8")
+    with open(path, "rb") as f:
+        actual = f.read()
+    if actual != expected:
+        raise SystemExit(
+            "FATAL: /output/entry.txt bytes differ from the entry text: "
+            f"wrote {len(actual)} bytes, expected {len(expected)} bytes"
+        )
+
+
+def main() -> None:
+    text = entry_text()
+    path = output_path()
+    write_entry(path, text)
+    self_check(path)
+    verify_written_bytes(path, text)
 
 
 if __name__ == "__main__":
